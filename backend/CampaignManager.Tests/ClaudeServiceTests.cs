@@ -2,6 +2,7 @@ using CampaignManager.Api.Models;
 using CampaignManager.Api.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Xunit;
 
 namespace CampaignManager.Tests;
 
