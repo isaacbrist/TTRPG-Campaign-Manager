@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+.next-build/
+tmp/
+
+# Environment files
+.env*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE and OS
+.vscode/
+.DS_Store
+
+# Tests
+__tests__/
+*.test.ts
+*.test.tsx
+jest.config.js
+jest.setup.js
+babel.config.js
+babel.test.config.js

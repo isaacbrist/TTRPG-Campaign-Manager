@@ -1,0 +1,13 @@
+# Build output
+bin/
+obj/
+
+# User secrets and local config
+.env*
+appsettings.Development.json
+
+# IDE and OS
+.vs/
+.vscode/
+*.user
+.DS_Store

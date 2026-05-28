@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: ./backend/CampaignManager.Api
+    ports:
+      - "5000:8080"
+    volumes:
+      - db-data:/app/data
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      # SQLite: store the DB in the mounted volume
+      - ConnectionStrings__Default=Data Source=/app/data/campaign_manager.db
+      # Secrets — set these in a .env file or shell before running docker-compose up
+      - Anthropic__ApiKey=${Anthropic__ApiKey}
+      - Jwt__SecretKey=${Jwt__SecretKey}
+      - Jwt__Issuer=${Jwt__Issuer:-CampaignManager}
+      - Jwt__Audience=${Jwt__Audience:-CampaignManager}
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # NEXT_PUBLIC_* vars are baked in at build time by Next.js
+        - NEXT_PUBLIC_API_URL=http://localhost:5000/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5000/api
+
+volumes:
+  db-data:

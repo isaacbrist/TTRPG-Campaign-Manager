@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-cinzel: var(--font-cinzel);
+}
+
+body {
+  background: #0c0a09; /* stone-950 */
+  color: #f5f5f4;      /* stone-100 */
+}
+
+/* Toast slide-in animation (replaces tailwindcss-animate dependency) */
+@keyframes toast-slide-in {
+  from {
+    transform: translateX(calc(100% + 1.5rem));
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast-enter {
+  animation: toast-slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Date input calendar icon tint */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.5) sepia(1) saturate(2) hue-rotate(10deg);
+  cursor: pointer;
+}

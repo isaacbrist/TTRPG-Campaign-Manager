@@ -1,0 +1,89 @@
+# =============================================================================
+# WHAT IS GITHUB ACTIONS / HOW DOES THIS WORKFLOW WORK?
+#
+# GitHub Actions is a built-in CI (Continuous Integration) system that GitHub
+# runs automatically whenever you push code or open a pull request. Think of it
+# as a robot that spins up a fresh Linux machine in the cloud, checks out your
+# code, and runs whatever commands you specify — so you always know whether the
+# project still builds and all tests pass before merging anything.
+#
+# This workflow defines two jobs that run at the same time: "backend" (which
+# installs .NET 8 and runs dotnet build + dotnet test) and "frontend" (which
+# installs Node 20, runs npm ci to get dependencies, then builds and tests the
+# Next.js app). If either job fails, GitHub marks the commit or PR with a red ✗
+# so you catch problems before they reach main.
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Backend — .NET 8 build + test
+  # ---------------------------------------------------------------------------
+  backend:
+    name: Backend (.NET 8)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        working-directory: backend
+        run: dotnet restore
+
+      - name: Build
+        working-directory: backend
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        working-directory: backend
+        run: dotnet test --no-build --configuration Release --verbosity normal
+
+  # ---------------------------------------------------------------------------
+  # Frontend — Node 20 build + test
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: Frontend (Node 20)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Test
+        working-directory: frontend
+        # Use npx jest directly — the package.json test script references a
+        # local /tmp path that only exists on the dev machine, not in CI.
+        run: npx jest --ci --passWithNoTests

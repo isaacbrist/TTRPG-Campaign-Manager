@@ -1,0 +1,48 @@
+# ── .NET ──────────────────────────────────────────────────────
+bin/
+obj/
+*.user
+.vs/
+*.suo
+*.userosscache
+*.sln.docstates
+
+# User secrets (stored outside project, but just in case)
+appsettings.Development.json
+secrets.json
+
+# SQLite database — don't commit local data
+*.db
+*.db-shm
+*.db-wal
+
+# Publish output
+publish/
+out/
+
+# ── Node / Next.js ────────────────────────────────────────────
+node_modules/
+.next/
+.cache/
+dist/
+build/
+
+# Environment files — contain secrets
+.env
+.env.local
+.env.*.local
+
+# Next.js build output
+frontend/.next/
+frontend/out/
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Editor ────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
