@@ -51,13 +51,18 @@ function makeCampaign(id: number, name: string) {
   };
 }
 
+/** Wrap a campaign array in the PaginatedResult envelope the API now returns. */
+function pageOf(items: ReturnType<typeof makeCampaign>[]) {
+  return { items, page: 1, pageSize: 20, totalCount: items.length, totalPages: 1 };
+}
+
 beforeEach(() => jest.clearAllMocks());
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe('HomePage', () => {
   test('renders "Your Campaigns" heading and "+ New Campaign" button', async () => {
-    mockGetCampaigns.mockResolvedValue([]);
+    mockGetCampaigns.mockResolvedValue(pageOf([]));
 
     render(<HomePage />);
 
@@ -68,10 +73,10 @@ describe('HomePage', () => {
   });
 
   test('shows campaign names once the API responds', async () => {
-    mockGetCampaigns.mockResolvedValue([
+    mockGetCampaigns.mockResolvedValue(pageOf([
       makeCampaign(1, 'Curse of Strahd'),
       makeCampaign(2, 'Tomb of Annihilation'),
-    ]);
+    ]));
 
     render(<HomePage />);
 
@@ -80,7 +85,7 @@ describe('HomePage', () => {
   });
 
   test('shows empty state message when there are no campaigns', async () => {
-    mockGetCampaigns.mockResolvedValue([]);
+    mockGetCampaigns.mockResolvedValue(pageOf([]));
 
     render(<HomePage />);
 
@@ -99,7 +104,7 @@ describe('HomePage', () => {
 
   test('clicking "+ New Campaign" opens the create form', async () => {
     const user = userEvent.setup();
-    mockGetCampaigns.mockResolvedValue([]);
+    mockGetCampaigns.mockResolvedValue(pageOf([]));
 
     render(<HomePage />);
     await waitFor(() => expect(mockGetCampaigns).toHaveBeenCalledTimes(1));
@@ -113,7 +118,7 @@ describe('HomePage', () => {
 
   test('submitting the create form calls createCampaign and shows success toast', async () => {
     const user = userEvent.setup();
-    mockGetCampaigns.mockResolvedValue([]);
+    mockGetCampaigns.mockResolvedValue(pageOf([]));
     mockCreateCampaign.mockResolvedValue(makeCampaign(5, 'Dragon Heist'));
 
     render(<HomePage />);

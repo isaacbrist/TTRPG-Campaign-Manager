@@ -214,4 +214,3 @@ function StatCard({ icon, label, value, accent = "amber" }: {
     </div>
   );
 }
-  

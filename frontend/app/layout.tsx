@@ -9,8 +9,11 @@ const cinzel = Cinzel({ subsets: ["latin"], variable: "--font-cinzel" });
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "Campaign Manager",
-  description: "AI-powered D&D campaign manager",
+  title: {
+    template: "%s | D&D Campaign Manager",
+    default: "D&D Campaign Manager",
+  },
+  description: "AI-powered D&D campaign manager — track campaigns, NPCs, and session logs.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

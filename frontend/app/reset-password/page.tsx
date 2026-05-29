@@ -3,6 +3,8 @@ import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { resetPassword } from "@/lib/api";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
+import { FormField } from "@/components/FormField";
 import { inputClass } from "@/lib/ui";
 
 function ResetPasswordForm() {
@@ -12,7 +14,6 @@ function ResetPasswordForm() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [succeeded, setSucceeded] = useState(false);
 
@@ -22,6 +23,15 @@ function ResetPasswordForm() {
     const timer = setTimeout(() => router.replace("/login"), 3000);
     return () => clearTimeout(timer);
   }, [succeeded, router]);
+
+  const [loading, submit] = useAsyncAction((err: unknown) => {
+    const message = err instanceof Error ? err.message : "";
+    setError(
+      message.includes("invalid or has expired")
+        ? "This reset link is invalid or has expired. Please request a new one."
+        : "Something went wrong. Please try again."
+    );
+  });
 
   if (!token) {
     return (
@@ -55,7 +65,6 @@ function ResetPasswordForm() {
 
   async function handleSubmit() {
     setError(null);
-
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
       return;
@@ -64,31 +73,17 @@ function ResetPasswordForm() {
       setError("Passwords do not match.");
       return;
     }
-
-    setLoading(true);
-    try {
+    await submit(async () => {
       await resetPassword(token!, password);
       setSucceeded(true);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "";
-      setError(
-        message.includes("invalid or has expired")
-          ? "This reset link is invalid or has expired. Please request a new one."
-          : "Something went wrong. Please try again."
-      );
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
   return (
     <form action={handleSubmit} className="space-y-5">
       <p className="text-stone-400 text-sm">Choose a new password for your account.</p>
 
-      <div>
-        <label className="block text-stone-400 text-xs uppercase tracking-wider mb-1.5" htmlFor="password">
-          New Password
-        </label>
+      <FormField label="New Password" id="password">
         <input
           id="password"
           type="password"
@@ -99,12 +94,8 @@ function ResetPasswordForm() {
           className={inputClass}
           placeholder="At least 8 characters"
         />
-      </div>
-
-      <div>
-        <label className="block text-stone-400 text-xs uppercase tracking-wider mb-1.5" htmlFor="confirm">
-          Confirm Password
-        </label>
+      </FormField>
+      <FormField label="Confirm Password" id="confirm">
         <input
           id="confirm"
           type="password"
@@ -115,7 +106,7 @@ function ResetPasswordForm() {
           className={inputClass}
           placeholder="••••••••"
         />
-      </div>
+      </FormField>
 
       {error && (
         <p className="text-red-400 text-sm bg-red-950/40 border border-red-900/50 rounded-lg px-4 py-2.5">

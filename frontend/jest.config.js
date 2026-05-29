@@ -1,5 +1,5 @@
 /** @type {import('jest').Config} */
-const testReactDir = '/tmp/jest-install/node_modules';
+const testReactDir = '<rootDir>/node_modules';
 
 const config = {
   testEnvironment: 'jest-environment-jsdom',

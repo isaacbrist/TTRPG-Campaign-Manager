@@ -74,4 +74,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Page content */}
       <main id="main-content" className="max-w-6xl mx-auto px-6 py-8">
-        {
+        {children}
+      </main>
+    </>
+  );
+}

@@ -2,13 +2,18 @@
 import { useState } from "react";
 import Link from "next/link";
 import { forgotPassword } from "@/lib/api";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
+import { FormField } from "@/components/FormField";
 import { inputClass } from "@/lib/ui";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [loading, submit] = useAsyncAction(() => {
+    setError("Something went wrong. Please try again.");
+  });
 
   async function handleSubmit() {
     setError(null);
@@ -16,16 +21,10 @@ export default function ForgotPasswordPage() {
       setError("Please enter your email address.");
       return;
     }
-
-    setLoading(true);
-    try {
+    await submit(async () => {
       await forgotPassword(email.trim());
       setSubmitted(true);
-    } catch {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
   return (
@@ -64,10 +63,7 @@ export default function ForgotPasswordPage() {
                 Enter the email address for your account and we'll send you a link to reset your password.
               </p>
 
-              <div>
-                <label className="block text-stone-400 text-xs uppercase tracking-wider mb-1.5" htmlFor="email">
-                  Email
-                </label>
+              <FormField label="Email" id="email">
                 <input
                   id="email"
                   type="email"
@@ -78,7 +74,7 @@ export default function ForgotPasswordPage() {
                   className={inputClass}
                   placeholder="dungeon@master.com"
                 />
-              </div>
+              </FormField>
 
               {error && (
                 <p className="text-red-400 text-sm bg-red-950/40 border border-red-900/50 rounded-lg px-4 py-2.5">

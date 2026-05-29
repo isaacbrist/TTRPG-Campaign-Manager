@@ -141,7 +141,13 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
+    // Migrate() only works with relational providers (SQLite, SQL Server, etc.).
+    // Integration tests substitute an in-memory provider, so we fall back to
+    // EnsureCreated() in that case to avoid an InvalidOperationException.
+    if (db.Database.IsRelational())
+        db.Database.Migrate();
+    else
+        db.Database.EnsureCreated();
 }
 
 // Global exception handler

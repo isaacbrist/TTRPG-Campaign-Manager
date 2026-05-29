@@ -83,7 +83,18 @@ dnd-campaign-manager/
 - [.NET 8 SDK](https://dotnet.microsoft.com/download)
 - An [Anthropic API key](https://console.anthropic.com/)
 
-### Backend
+### Run everything at once (recommended)
+
+From the repo root, install the root dev dependencies once, then start both servers with a single command:
+
+```bash
+npm install          # installs concurrently at the repo root
+npm run dev          # starts backend + frontend together
+```
+
+The backend will be at `http://localhost:5000` and the frontend at `http://localhost:3000`. Both processes share the same terminal window with colour-coded output (`cyan` = backend, `magenta` = frontend). Press `Ctrl+C` once to stop both.
+
+### Backend (standalone)
 
 ```bash
 cd backend/CampaignManager.Api
@@ -98,7 +109,7 @@ dotnet run
 
 The SQLite database is created automatically on first run.
 
-### Frontend
+### Frontend (standalone)
 
 ```bash
 cd frontend

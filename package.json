@@ -1,0 +1,11 @@
+{
+  "name": "dnd-campaign-manager",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --names \"backend,frontend\" --prefix-colors \"cyan,magenta\" \"dotnet run --project backend/CampaignManager.Api/CampaignManager.Api.csproj\" \"cd frontend && npm run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

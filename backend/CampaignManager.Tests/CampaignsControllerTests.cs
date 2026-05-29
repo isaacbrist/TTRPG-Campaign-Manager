@@ -204,4 +204,13 @@ public class CampaignsControllerTests : IAsyncLifetime
             notes       = (string?)null
         };
 
-        var response = await _client.PutAsJsonAsync($"/api/campaigns/{created.Id}", updatePa
+        var response = await _client.PutAsJsonAsync($"/api/campaigns/{created.Id}", updatePayload);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var updated = await response.Content.ReadFromJsonAsync<Campaign>();
+        Assert.NotNull(updated);
+        Assert.Equal("New Name", updated.Name);
+        Assert.Equal("New description", updated.Description);
+        Assert.Equal("New Setting", updated.Setting);
+    }
+}
