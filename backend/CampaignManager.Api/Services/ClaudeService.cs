@@ -20,6 +20,8 @@ public class ClaudeService(IAnthropicMessageClient messageClient, ILogger<Claude
         if (!trimmed.StartsWith("```")) return trimmed;
         var start = trimmed.IndexOf('\n') + 1;
         var end   = trimmed.LastIndexOf("```");
+        // If there's no closing fence (end points back at the opening one), return as-is.
+        if (end <= start) return trimmed;
         return trimmed[start..end].Trim();
     }
 

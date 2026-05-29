@@ -8,6 +8,15 @@ export function setAuthToken(token: string | null): void {
   _authToken = token;
 }
 
+// ── Session-expired toast callback ─────────────────────────────────────────
+// Registered by AuthProvider so api.ts can show a toast without a React dep.
+type ToastFn = (message: string) => void;
+let _sessionExpiredToast: ToastFn | null = null;
+
+export function setSessionExpiredToast(fn: ToastFn): void {
+  _sessionExpiredToast = fn;
+}
+
 // ── Rate limit error ───────────────────────────────────────────────────────
 
 export class RateLimitError extends Error {
@@ -58,11 +67,21 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   if (res.status === 401) {
-    // Token expired or invalid — redirect to login
-    if (typeof window !== "undefined") {
+    // Only treat this as a session expiry if the user was already authenticated.
+    // On the login page (no token), a 401 just means wrong credentials — don't
+    // redirect or show a "session expired" toast; let the caller handle it.
+    if (_authToken && typeof window !== "undefined") {
+      _sessionExpiredToast?.("Your session expired. Please sign in again.");
       window.location.href = "/login";
     }
-    throw new Error("Unauthorized");
+    // Try to surface the server's error message (e.g. "Invalid email or password.")
+    // so callers don't have to string-match on status codes.
+    let detail = "Unauthorized";
+    try {
+      const body = await res.json();
+      if (typeof body?.message === "string") detail = body.message;
+    } catch { /* ignore parse errors */ }
+    throw new Error(detail);
   }
 
   if (res.status === 429) {
@@ -102,7 +121,13 @@ export const resetPassword = (token: string, newPassword: string) =>
   });
 
 // ── Campaigns ──────────────────────────────────────────────────────────────
-export const getCampaigns = () => request<Campaign[]>("/campaigns");
+export const getCampaigns = (params?: { page?: number; pageSize?: number }) => {
+  const qs = new URLSearchParams();
+  if (params?.page)     qs.set("page",     String(params.page));
+  if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
+  const query = qs.toString() ? `?${qs}` : "";
+  return request<PaginatedResult<Campaign>>(`/campaigns${query}`);
+};
 export const getCampaign = (id: number) => request<Campaign>(`/campaigns/${id}`);
 export const createCampaign = (data: CreateCampaignRequest) =>
   request<Campaign>("/campaigns", { method: "POST", body: JSON.stringify(data) });
@@ -112,8 +137,16 @@ export const deleteCampaign = (id: number) =>
   request<void>(`/campaigns/${id}`, { method: "DELETE" });
 
 // ── NPCs ───────────────────────────────────────────────────────────────────
-export const getNpcs = (campaignId: number) =>
-  request<Npc[]>(`/campaigns/${campaignId}/npcs`);
+export const getNpcs = (campaignId: number, params?: { page?: number; pageSize?: number; search?: string; status?: string; relationship?: string }) => {
+  const qs = new URLSearchParams();
+  if (params?.page)         qs.set("page",         String(params.page));
+  if (params?.pageSize)     qs.set("pageSize",     String(params.pageSize));
+  if (params?.search)       qs.set("search",       params.search);
+  if (params?.status)       qs.set("status",       params.status);
+  if (params?.relationship) qs.set("relationship", params.relationship);
+  const query = qs.toString() ? `?${qs}` : "";
+  return request<PaginatedResult<Npc>>(`/campaigns/${campaignId}/npcs${query}`);
+};
 export const createNpc = (campaignId: number, data: CreateNpcRequest) =>
   request<Npc>(`/campaigns/${campaignId}/npcs`, { method: "POST", body: JSON.stringify(data) });
 export const generateNpc = (campaignId: number, hints?: string) =>
@@ -130,8 +163,13 @@ export const deleteNpc = (campaignId: number, npcId: number) =>
   request<void>(`/campaigns/${campaignId}/npcs/${npcId}`, { method: "DELETE" });
 
 // ── Sessions ───────────────────────────────────────────────────────────────
-export const getSessions = (campaignId: number) =>
-  request<Session[]>(`/campaigns/${campaignId}/sessions`);
+export const getSessions = (campaignId: number, params?: { page?: number; pageSize?: number }) => {
+  const qs = new URLSearchParams();
+  if (params?.page)     qs.set("page",     String(params.page));
+  if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
+  const query = qs.toString() ? `?${qs}` : "";
+  return request<PaginatedResult<Session>>(`/campaigns/${campaignId}/sessions${query}`);
+};
 export const createSession = (campaignId: number, data?: CreateSessionRequest) =>
   request<Session>(`/campaigns/${campaignId}/sessions`, {
     method: "POST",
@@ -172,6 +210,15 @@ export const attachRecapDraft = (campaignId: number, draftId: number, sessionId:
   });
 
 // ── Types ──────────────────────────────────────────────────────────────────
+
+// Matches the backend PaginatedResult<T> record shape.
+export interface PaginatedResult<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+}
 
 // Request shapes — mirror the backend DTOs for compile-time safety.
 
@@ -232,8 +279,13 @@ export interface Campaign {
   notes?: string;
   createdAt: string;
   userId?: string;
+  // List endpoint only (paginated)
   npcs?: Npc[];
   sessions?: Session[];
+  // Detail endpoint aggregates (GET /campaigns/:id)
+  npcCount?: number;
+  sessionCount?: number;
+  lastPlayedOn?: string | null;
 }
 
 export interface Npc {

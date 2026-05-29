@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,48 +10,48 @@ namespace CampaignManager.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class CampaignsController(AppDbContext db) : ControllerBase
+public class CampaignsController(AppDbContext db) : CampaignControllerBase(db)
 {
-    private string? CurrentUserId =>
-        User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-    // ── Shared authorization helper ──────────────────────────────────────────
-    // Extracted because the same find-check-forbid logic appeared in every
-    // mutating action. Returns (campaign, null) on success or (null, result) on failure.
-
-    private async Task<(Campaign? campaign, IActionResult? error)> FindAuthorizedAsync(int id)
-    {
-        var campaign = await db.Campaigns.FindAsync(id);
-        if (campaign is null) return (null, NotFound());
-        if (campaign.UserId != CurrentUserId) return (null, Forbid());
-        return (campaign, null);
-    }
-
     // ── GET /api/campaigns ───────────────────────────────────────────────────
 
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var campaigns = await db.Campaigns
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = db.Campaigns
             .Where(c => c.UserId == CurrentUserId)
-            .ToListAsync();
-        return Ok(campaigns);
+            .OrderByDescending(c => c.CreatedAt);
+
+        var totalCount = await query.CountAsync();
+        var items      = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+        return Ok(new PaginatedResult<Campaign>(items, page, pageSize, totalCount, totalPages));
     }
 
     // ── GET /api/campaigns/{id} ──────────────────────────────────────────────
+    // Uses a custom query with Includes, so we run the ownership check inline
+    // rather than calling AuthorizeCampaignAsync (which uses FindAsync).
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var campaign = await db.Campaigns
-            .Include(c => c.Npcs)
-            .Include(c => c.Sessions.OrderBy(s => s.SessionNumber))
-            .FirstOrDefaultAsync(c => c.Id == id);
-
+        var campaign = await db.Campaigns.FindAsync(id);
         if (campaign is null) return NotFound();
         if (campaign.UserId != CurrentUserId) return Forbid();
 
-        return Ok(campaign);
+        // Compute aggregate counts in the DB rather than loading full collections.
+        var npcCount     = await db.Npcs.CountAsync(n => n.CampaignId == id);
+        var sessionCount = await db.Sessions.CountAsync(s => s.CampaignId == id);
+        var lastPlayedOn = await db.Sessions
+            .Where(s => s.CampaignId == id)
+            .OrderByDescending(s => s.SessionNumber)
+            .Select(s => (DateTime?)s.PlayedOn)
+            .FirstOrDefaultAsync();
+
+        return Ok(CampaignDetailResponse.From(campaign, npcCount, sessionCount, lastPlayedOn));
     }
 
     // ── POST /api/campaigns ──────────────────────────────────────────────────
@@ -78,7 +77,7 @@ public class CampaignsController(AppDbContext db) : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, UpdateCampaignRequest request)
     {
-        var (campaign, error) = await FindAuthorizedAsync(id);
+        var (campaign, error) = await AuthorizeCampaignAsync(id);
         if (error is not null) return error;
 
         campaign!.Name        = request.Name;
@@ -95,7 +94,7 @@ public class CampaignsController(AppDbContext db) : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var (campaign, error) = await FindAuthorizedAsync(id);
+        var (campaign, error) = await AuthorizeCampaignAsync(id);
         if (error is not null) return error;
 
         db.Campaigns.Remove(campaign!);

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using CampaignManager.Api.Data;
 using CampaignManager.Api.Dtos;
 using CampaignManager.Api.Models;
@@ -17,15 +18,23 @@ public class SessionsController(AppDbContext db, ClaudeService claudeService) : 
     // ── GET /api/campaigns/{campaignId}/sessions ─────────────────────────────
 
     [HttpGet]
-    public async Task<IActionResult> GetAll(int campaignId)
+    public async Task<IActionResult> GetAll(int campaignId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         var (_, error) = await AuthorizeCampaignAsync(campaignId);
         if (error is not null) return error;
 
-        return Ok(await db.Sessions
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = db.Sessions
             .Where(s => s.CampaignId == campaignId)
-            .OrderBy(s => s.SessionNumber)
-            .ToListAsync());
+            .OrderByDescending(s => s.SessionNumber);
+
+        var totalCount = await query.CountAsync();
+        var items      = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+        return Ok(new PaginatedResult<Session>(items, page, pageSize, totalCount, totalPages));
     }
 
     // ── GET /api/campaigns/{campaignId}/sessions/{id} ────────────────────────
@@ -48,7 +57,10 @@ public class SessionsController(AppDbContext db, ClaudeService claudeService) : 
         var (_, error) = await AuthorizeCampaignAsync(campaignId);
         if (error is not null) return error;
 
-        // Auto-assign SessionNumber: max existing + 1, defaulting to 1.
+        // Wrap in a transaction so the MaxAsync read and the insert are atomic,
+        // preventing two concurrent requests from assigning the same SessionNumber.
+        await using var tx = await db.Database.BeginTransactionAsync();
+
         var maxNumber = await db.Sessions
             .Where(s => s.CampaignId == campaignId)
             .Select(s => (int?)s.SessionNumber)
@@ -63,6 +75,8 @@ public class SessionsController(AppDbContext db, ClaudeService claudeService) : 
 
         db.Sessions.Add(session);
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
+
         return CreatedAtAction(nameof(GetById), new { campaignId, id = session.Id }, session);
     }
 
@@ -221,13 +235,4 @@ public class SessionsController(AppDbContext db, ClaudeService claudeService) : 
         var (_, error) = await AuthorizeCampaignAsync(campaignId);
         if (error is not null) return error;
 
-        var session = await db.Sessions.FirstOrDefaultAsync(s => s.CampaignId == campaignId && s.Id == id);
-        if (session is null) return NotFound();
-
-        session.Summary      = null;
-        session.StoryBeats   = null;
-        session.NewNpcsFound = null;
-        await db.SaveChangesAsync();
-        return Ok(session);
-    }
-}
+        var session = await db.Sessions.FirstOrDefaultAsync(s => s.CampaignId == campaignId

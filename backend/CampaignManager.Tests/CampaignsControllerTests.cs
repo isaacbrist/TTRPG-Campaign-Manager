@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using CampaignManager.Api.Data;
+using CampaignManager.Api.Dtos;
 using CampaignManager.Api.Models;
 using CampaignManager.Api.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,6 +43,17 @@ public class CampaignsControllerTests : IAsyncLifetime
                     services.RemoveAll<IAnthropicMessageClient>();
                     services.AddSingleton<IAnthropicMessageClient>(
                         Mock.Of<IAnthropicMessageClient>());
+
+                    // Override JWT bearer auth with a test handler that auto-authenticates
+                    // every request as a fixed user. Without this, all requests to
+                    // [Authorize]-decorated controllers return 401 and tests fail.
+                    services.AddAuthentication(options =>
+                    {
+                        options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
+                        options.DefaultChallengeScheme    = TestAuthHandler.SchemeName;
+                    })
+                    .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(
+                        TestAuthHandler.SchemeName, _ => { });
                 });
             });
 
@@ -69,19 +82,20 @@ public class CampaignsControllerTests : IAsyncLifetime
     // ── GET /api/campaigns ────────────────────────────────────────────────────
 
     [Fact]
-    public async Task GetAll_EmptyDatabase_ReturnsEmptyList()
+    public async Task GetAll_EmptyDatabase_ReturnsEmptyPaginatedResult()
     {
         var response = await _client.GetAsync("/api/campaigns");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var campaigns = await response.Content.ReadFromJsonAsync<List<Campaign>>();
-        Assert.NotNull(campaigns);
-        Assert.Empty(campaigns);
+        var result = await response.Content.ReadFromJsonAsync<PaginatedResult<Campaign>>();
+        Assert.NotNull(result);
+        Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
     }
 
     [Fact]
-    public async Task GetAll_AfterCreating_ReturnsAllCampaigns()
+    public async Task GetAll_AfterCreating_ReturnsPaginatedCampaigns()
     {
         await CreateCampaignAsync("Dragon Coast Chronicles");
         await CreateCampaignAsync("Underdark Descent");
@@ -89,11 +103,11 @@ public class CampaignsControllerTests : IAsyncLifetime
         var response = await _client.GetAsync("/api/campaigns");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var campaigns = await response.Content.ReadFromJsonAsync<List<Campaign>>();
-        Assert.NotNull(campaigns);
-        Assert.Equal(2, campaigns.Count);
-        Assert.Contains(campaigns, c => c.Name == "Dragon Coast Chronicles");
-        Assert.Contains(campaigns, c => c.Name == "Underdark Descent");
+        var result = await response.Content.ReadFromJsonAsync<PaginatedResult<Campaign>>();
+        Assert.NotNull(result);
+        Assert.Equal(2, result.TotalCount);
+        Assert.Contains(result.Items, c => c.Name == "Dragon Coast Chronicles");
+        Assert.Contains(result.Items, c => c.Name == "Underdark Descent");
     }
 
     // ── POST /api/campaigns ───────────────────────────────────────────────────
@@ -126,7 +140,7 @@ public class CampaignsControllerTests : IAsyncLifetime
     // ── GET /api/campaigns/{id} ───────────────────────────────────────────────
 
     [Fact]
-    public async Task GetById_ExistingId_ReturnsCampaign()
+    public async Task GetById_ExistingId_ReturnsCampaignDetail()
     {
         var created = await CreateCampaignAsync("Curse of Strahd");
 
@@ -134,10 +148,14 @@ public class CampaignsControllerTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var campaign = await response.Content.ReadFromJsonAsync<Campaign>();
-        Assert.NotNull(campaign);
-        Assert.Equal(created.Id, campaign.Id);
-        Assert.Equal("Curse of Strahd", campaign.Name);
+        // GetById returns CampaignDetailResponse (with aggregate counts, not navigation lists)
+        var detail = await response.Content.ReadFromJsonAsync<CampaignDetailResponse>();
+        Assert.NotNull(detail);
+        Assert.Equal(created.Id, detail.Id);
+        Assert.Equal("Curse of Strahd", detail.Name);
+        Assert.Equal(0, detail.NpcCount);
+        Assert.Equal(0, detail.SessionCount);
+        Assert.Null(detail.LastPlayedOn);
     }
 
     [Fact]
@@ -186,13 +204,4 @@ public class CampaignsControllerTests : IAsyncLifetime
             notes       = (string?)null
         };
 
-        var response = await _client.PutAsJsonAsync($"/api/campaigns/{created.Id}", updatePayload);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var updated = await response.Content.ReadFromJsonAsync<Campaign>();
-        Assert.NotNull(updated);
-        Assert.Equal("New Name", updated.Name);
-        Assert.Equal("New description", updated.Description);
-        Assert.Equal("New Setting", updated.Setting);
-    }
-}
+        var response = await _client.PutAsJsonAsync($"/api/campaigns/{created.Id}", updatePa

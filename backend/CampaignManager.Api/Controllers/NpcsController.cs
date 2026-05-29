@@ -17,12 +17,40 @@ public class NpcsController(AppDbContext db, ClaudeService claudeService) : Camp
     // ── GET /api/campaigns/{campaignId}/npcs ─────────────────────────────────
 
     [HttpGet]
-    public async Task<IActionResult> GetAll(int campaignId)
+    public async Task<IActionResult> GetAll(
+        int campaignId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? search = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? relationship = null)
     {
         var (_, error) = await AuthorizeCampaignAsync(campaignId);
         if (error is not null) return error;
 
-        return Ok(await db.Npcs.Where(n => n.CampaignId == campaignId).ToListAsync());
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = db.Npcs
+            .Where(n => n.CampaignId == campaignId)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(n => n.Name.Contains(search) || (n.Role != null && n.Role.Contains(search)));
+
+        if (status == "alive")    query = query.Where(n => n.IsAlive);
+        if (status == "deceased") query = query.Where(n => !n.IsAlive);
+
+        if (!string.IsNullOrWhiteSpace(relationship) && relationship != "all")
+            query = query.Where(n => n.RelationshipToParty == relationship);
+
+        query = query.OrderBy(n => n.Name);
+
+        var totalCount = await query.CountAsync();
+        var items      = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+        return Ok(new PaginatedResult<Npc>(items, page, pageSize, totalCount, totalPages));
     }
 
     // ── GET /api/campaigns/{campaignId}/npcs/{id} ────────────────────────────
