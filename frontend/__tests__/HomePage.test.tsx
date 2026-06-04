@@ -21,10 +21,12 @@ jest.mock('next/link', () => {
 });
 
 jest.mock('@/lib/api', () => ({
-  getCampaigns:   jest.fn(),
-  createCampaign: jest.fn(),
-  updateCampaign: jest.fn(),
-  deleteCampaign: jest.fn(),
+  getCampaigns:    jest.fn(),
+  createCampaign:  jest.fn(),
+  updateCampaign:  jest.fn(),
+  deleteCampaign:  jest.fn(),
+  // Return the fallback string so components render the right error message
+  apiErrorMessage: (_err: unknown, fallback: string) => fallback,
 }));
 
 jest.mock('@/components/Toast', () => ({
@@ -111,9 +113,9 @@ describe('HomePage', () => {
 
     await user.click(screen.getByRole('button', { name: /new campaign/i }));
 
-    // The modal should now be visible with a name input and a Create button
-    expect(await screen.findByPlaceholderText(/campaign name/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^create$/i })).toBeInTheDocument();
+    // The modal should now be visible with a name input and a Create Campaign button
+    expect(await screen.findByPlaceholderText(/curse of strahd/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /create campaign/i })).toBeInTheDocument();
   });
 
   test('submitting the create form calls createCampaign and shows success toast', async () => {
@@ -128,9 +130,9 @@ describe('HomePage', () => {
     await user.click(screen.getByRole('button', { name: /new campaign/i }));
 
     // Type a name and submit
-    const nameInput = await screen.findByPlaceholderText(/campaign name/i);
+    const nameInput = await screen.findByPlaceholderText(/curse of strahd/i);
     await user.type(nameInput, 'Dragon Heist');
-    await user.click(screen.getByRole('button', { name: /^create$/i }));
+    await user.click(screen.getByRole('button', { name: /create campaign/i }));
 
     await waitFor(() => {
       expect(mockCreateCampaign).toHaveBeenCalledWith(

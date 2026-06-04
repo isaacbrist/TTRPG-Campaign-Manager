@@ -225,4 +225,64 @@ public class ClaudeServiceTests
 
         Assert.Contains("could not be parsed", ex.Message);
     }
+
+    // ── StripCodeFences (via ProcessSessionNotesAsync) ───────────────────────
+
+    [Fact]
+    public async Task ProcessSessionNotesAsync_ResponseInCodeFence_StripsCorrectly()
+    {
+        // Arrange — Claude sometimes wraps its JSON in a ```json ... ``` block
+        const string fencedJson = """
+            ```json
+            {
+              "summary": "A fenced summary.",
+              "storyBeats": ["Beat one."],
+              "newNpcs": []
+            }
+            ```
+            """;
+
+        var mockClient = new Mock<IAnthropicMessageClient>();
+        mockClient
+            .Setup(c => c.SendMessageAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fencedJson);
+
+        var session = new Session { Id = 10, CampaignId = 1, SessionNumber = 1,
+            PlayedOn = DateTime.UtcNow, RawNotes = "Notes." };
+
+        var sut = CreateService(mockClient.Object);
+
+        // Act — should not throw; the fence is stripped before JSON parsing
+        await sut.ProcessSessionNotesAsync(session);
+
+        // Assert
+        Assert.Equal("A fenced summary.", session.Summary);
+    }
+
+    [Fact]
+    public async Task ProcessSessionNotesAsync_UnclosedCodeFence_DoesNotThrow()
+    {
+        // Arrange — response starts with ``` but has no closing fence.
+        // Before the fix, StripCodeFences would produce a negative range and throw.
+        const string unclosedFence = "```\nnot valid json at all";
+
+        var mockClient = new Mock<IAnthropicMessageClient>();
+        mockClient
+            .Setup(c => c.SendMessageAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(unclosedFence);
+
+        var session = new Session { Id = 11, CampaignId = 1, SessionNumber = 2,
+            PlayedOn = DateTime.UtcNow, RawNotes = "Notes." };
+
+        var sut = CreateService(mockClient.Object);
+
+        // Act & Assert — should throw InvalidOperationException (JSON parse failure),
+        // NOT ArgumentOutOfRangeException from the fence-stripping code.
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.ProcessSessionNotesAsync(session));
+
+        Assert.Contains("could not be parsed", ex.Message);
+    }
 }

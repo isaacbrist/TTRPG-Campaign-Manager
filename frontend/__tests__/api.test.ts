@@ -30,13 +30,19 @@ afterEach(() => {
 // ── getCampaigns ───────────────────────────────────────────────────────────
 
 describe('getCampaigns', () => {
-  test('calls GET /campaigns and returns the parsed list', async () => {
-    const fakeCampaigns = [
-      { id: 1, name: 'Campaign A', createdAt: '2025-01-01T00:00:00Z' },
-      { id: 2, name: 'Campaign B', createdAt: '2025-02-01T00:00:00Z' },
-    ];
+  test('calls GET /campaigns and returns the paginated result', async () => {
+    const fakePage = {
+      items: [
+        { id: 1, name: 'Campaign A', createdAt: '2025-01-01T00:00:00Z' },
+        { id: 2, name: 'Campaign B', createdAt: '2025-02-01T00:00:00Z' },
+      ],
+      page: 1,
+      pageSize: 20,
+      totalCount: 2,
+      totalPages: 1,
+    };
 
-    mockFetch(fakeCampaigns);
+    mockFetch(fakePage);
 
     const result = await getCampaigns();
 
@@ -44,7 +50,9 @@ describe('getCampaigns', () => {
     const [url, opts] = (fetch as jest.Mock).mock.calls[0];
     expect(url).toContain('/campaigns');
     expect(opts.headers).toMatchObject({ 'Content-Type': 'application/json' });
-    expect(result).toEqual(fakeCampaigns);
+    expect(result.items).toHaveLength(2);
+    expect(result.totalCount).toBe(2);
+    expect(result.items[0].name).toBe('Campaign A');
   });
 
   test('throws when the server returns a non-2xx status', async () => {

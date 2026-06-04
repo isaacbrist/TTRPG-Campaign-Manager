@@ -235,4 +235,14 @@ public class SessionsController(AppDbContext db, ClaudeService claudeService) : 
         var (_, error) = await AuthorizeCampaignAsync(campaignId);
         if (error is not null) return error;
 
-        var session = await db.Sessions.FirstOrDefaultAsync(s => s.CampaignId == campaignId
+        var session = await db.Sessions.FirstOrDefaultAsync(s => s.CampaignId == campaignId && s.Id == id);
+        if (session is null) return NotFound();
+
+        session.Summary      = null;
+        session.StoryBeats   = null;
+        session.NewNpcsFound = null;
+
+        await db.SaveChangesAsync();
+        return Ok(session);
+    }
+}

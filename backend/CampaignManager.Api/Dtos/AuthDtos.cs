@@ -2,7 +2,10 @@ using System.ComponentModel.DataAnnotations;
 
 namespace CampaignManager.Api.Dtos;
 
-public record AuthRequest(string Email, string Password);
+public record AuthRequest(
+    [Required][EmailAddress] string Email,
+    [Required] string Password
+);
 
 public record ForgotPasswordRequest([Required] string Email);
 
