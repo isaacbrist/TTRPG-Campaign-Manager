@@ -66,10 +66,19 @@ public class CampaignsControllerTests : IAsyncLifetime
 
         _client = _factory.CreateClient();
 
-        // Create the schema against the shared connection
+        // Create the schema and seed the test user.
+        // Unlike the EF Core in-memory provider, SQLite enforces FK constraints,
+        // so campaigns with UserId = TestUserId need a matching row in Users.
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.EnsureCreatedAsync();
+        db.Users.Add(new User
+        {
+            Id           = TestAuthHandler.TestUserId,
+            Email        = "test@example.com",
+            PasswordHash = "not-a-real-hash",
+        });
+        await db.SaveChangesAsync();
     }
 
     public async Task DisposeAsync()
