@@ -34,7 +34,10 @@ build/
 
 # Next.js build output
 frontend/.next/
+frontend/.next-build/
 frontend/out/
+frontend/tmp/
+frontend/sessions/
 
 # ── OS ────────────────────────────────────────────────────────
 .DS_Store

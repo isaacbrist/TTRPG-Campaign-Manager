@@ -1,3 +1,5 @@
+using Anthropic.SDK;
+using Anthropic.SDK.Messaging;
 using CampaignManager.Api.Models;
 using System.Text.Json;
 
@@ -250,5 +252,40 @@ public class ClaudeService(IAnthropicMessageClient messageClient, ILogger<Claude
     {
         var rng = Random.Shared;
         return [.. source.OrderBy(_ => rng.Next()).Take(count)];
+    }
+}
+
+/// <summary>
+/// Production implementation of IAnthropicMessageClient — delegates to the real Anthropic SDK.
+/// Kept here alongside ClaudeService since it exists solely to support it.
+/// Tests inject a mock of IAnthropicMessageClient instead of this class.
+/// </summary>
+public class AnthropicMessageClientWrapper(IConfiguration config) : IAnthropicMessageClient
+{
+    private readonly AnthropicClient _client = new(
+        config["Anthropic:ApiKey"]
+            ?? throw new InvalidOperationException("Anthropic:ApiKey is not configured."));
+
+    public async Task<string> SendMessageAsync(
+        string prompt,
+        string model,
+        int maxTokens,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _client.Messages.GetClaudeMessageAsync(new MessageParameters
+        {
+            Model = model,
+            MaxTokens = maxTokens,
+            Messages =
+            [
+                new Message
+                {
+                    Role = RoleType.User,
+                    Content = [new TextContent { Text = prompt }]
+                }
+            ]
+        });
+
+        return ((TextContent)response.Content[0]).Text;
     }
 }
