@@ -97,8 +97,16 @@ public class CampaignsControllerTests : IAsyncLifetime
     [Fact]
     public async Task GetAll_AfterCreating_ReturnsPaginatedCampaigns()
     {
-        await CreateCampaignAsync("Dragon Coast Chronicles");
-        await CreateCampaignAsync("Underdark Descent");
+        // Seed directly so UserId is guaranteed to match TestAuthHandler.TestUserId
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Campaigns.AddRange(
+                new Campaign { Name = "Dragon Coast Chronicles", UserId = TestAuthHandler.TestUserId },
+                new Campaign { Name = "Underdark Descent",       UserId = TestAuthHandler.TestUserId }
+            );
+            await db.SaveChangesAsync();
+        }
 
         var response = await _client.GetAsync("/api/campaigns");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -142,16 +150,22 @@ public class CampaignsControllerTests : IAsyncLifetime
     [Fact]
     public async Task GetById_ExistingId_ReturnsCampaignDetail()
     {
-        var created = await CreateCampaignAsync("Curse of Strahd");
+        var campaign = new Campaign { Name = "Curse of Strahd", UserId = TestAuthHandler.TestUserId };
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Campaigns.Add(campaign);
+            await db.SaveChangesAsync();
+        }
 
-        var response = await _client.GetAsync($"/api/campaigns/{created.Id}");
+        var response = await _client.GetAsync($"/api/campaigns/{campaign.Id}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         // GetById returns CampaignDetailResponse (with aggregate counts, not navigation lists)
         var detail = await response.Content.ReadFromJsonAsync<CampaignDetailResponse>();
         Assert.NotNull(detail);
-        Assert.Equal(created.Id, detail.Id);
+        Assert.Equal(campaign.Id, detail.Id);
         Assert.Equal("Curse of Strahd", detail.Name);
         Assert.Equal(0, detail.NpcCount);
         Assert.Equal(0, detail.SessionCount);
@@ -171,13 +185,19 @@ public class CampaignsControllerTests : IAsyncLifetime
     [Fact]
     public async Task Delete_ExistingCampaign_Returns204AndRemovesIt()
     {
-        var created = await CreateCampaignAsync("Tomb of Annihilation");
+        var campaign = new Campaign { Name = "Tomb of Annihilation", UserId = TestAuthHandler.TestUserId };
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Campaigns.Add(campaign);
+            await db.SaveChangesAsync();
+        }
 
-        var deleteResponse = await _client.DeleteAsync($"/api/campaigns/{created.Id}");
+        var deleteResponse = await _client.DeleteAsync($"/api/campaigns/{campaign.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
         // Verify it is gone
-        var getResponse = await _client.GetAsync($"/api/campaigns/{created.Id}");
+        var getResponse = await _client.GetAsync($"/api/campaigns/{campaign.Id}");
         Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
     }
 
@@ -194,7 +214,13 @@ public class CampaignsControllerTests : IAsyncLifetime
     [Fact]
     public async Task Update_ExistingCampaign_Returns200WithUpdatedValues()
     {
-        var created = await CreateCampaignAsync("Old Name", "Old desc", "Old Setting");
+        var campaign = new Campaign { Name = "Old Name", Description = "Old desc", Setting = "Old Setting", UserId = TestAuthHandler.TestUserId };
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Campaigns.Add(campaign);
+            await db.SaveChangesAsync();
+        }
 
         var updatePayload = new
         {
@@ -204,7 +230,7 @@ public class CampaignsControllerTests : IAsyncLifetime
             notes       = (string?)null
         };
 
-        var response = await _client.PutAsJsonAsync($"/api/campaigns/{created.Id}", updatePayload);
+        var response = await _client.PutAsJsonAsync($"/api/campaigns/{campaign.Id}", updatePayload);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var updated = await response.Content.ReadFromJsonAsync<Campaign>();

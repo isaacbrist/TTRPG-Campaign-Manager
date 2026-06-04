@@ -38,7 +38,7 @@ public class CampaignsController(AppDbContext db) : CampaignControllerBase(db)
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var campaign = await db.Campaigns.FindAsync(id);
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(c => c.Id == id);
         if (campaign is null) return NotFound();
         if (campaign.UserId != CurrentUserId) return Forbid();
 
