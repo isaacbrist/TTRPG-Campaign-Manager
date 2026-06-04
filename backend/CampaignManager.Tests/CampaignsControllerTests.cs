@@ -6,6 +6,7 @@ using CampaignManager.Api.Models;
 using CampaignManager.Api.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -23,21 +24,27 @@ public class CampaignsControllerTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program> _factory = null!;
     private HttpClient _client = null!;
+    private SqliteConnection _connection = null!;
 
     // ── Test lifecycle ────────────────────────────────────────────────────────
 
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
+        // A single open SqliteConnection is shared across all DbContext instances
+        // (HTTP request scopes and direct seeding scopes alike) so they all see
+        // the same data — something EF Core's in-memory provider cannot guarantee.
+        _connection = new SqliteConnection("DataSource=:memory:");
+        _connection.Open();
+
         _factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
                 builder.ConfigureServices(services =>
                 {
-                    // Replace the real SQLite DB with an isolated in-memory database
+                    // Replace the real SQLite DB with a shared in-memory connection
                     services.RemoveAll<DbContextOptions<AppDbContext>>();
-                    services.RemoveAll<AppDbContext>();
                     services.AddDbContext<AppDbContext>(options =>
-                        options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
+                        options.UseSqlite(_connection));
 
                     // Replace the real Anthropic client so no API key is required
                     services.RemoveAll<IAnthropicMessageClient>();
@@ -58,13 +65,18 @@ public class CampaignsControllerTests : IAsyncLifetime
             });
 
         _client = _factory.CreateClient();
-        return Task.CompletedTask;
+
+        // Create the schema against the shared connection
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.EnsureCreatedAsync();
     }
 
     public async Task DisposeAsync()
     {
         _client.Dispose();
         await _factory.DisposeAsync();
+        await _connection.DisposeAsync();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -97,16 +109,8 @@ public class CampaignsControllerTests : IAsyncLifetime
     [Fact]
     public async Task GetAll_AfterCreating_ReturnsPaginatedCampaigns()
     {
-        // Seed directly so UserId is guaranteed to match TestAuthHandler.TestUserId
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Campaigns.AddRange(
-                new Campaign { Name = "Dragon Coast Chronicles", UserId = TestAuthHandler.TestUserId },
-                new Campaign { Name = "Underdark Descent",       UserId = TestAuthHandler.TestUserId }
-            );
-            await db.SaveChangesAsync();
-        }
+        await CreateCampaignAsync("Dragon Coast Chronicles");
+        await CreateCampaignAsync("Underdark Descent");
 
         var response = await _client.GetAsync("/api/campaigns");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -150,22 +154,16 @@ public class CampaignsControllerTests : IAsyncLifetime
     [Fact]
     public async Task GetById_ExistingId_ReturnsCampaignDetail()
     {
-        var campaign = new Campaign { Name = "Curse of Strahd", UserId = TestAuthHandler.TestUserId };
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Campaigns.Add(campaign);
-            await db.SaveChangesAsync();
-        }
+        var created = await CreateCampaignAsync("Curse of Strahd");
 
-        var response = await _client.GetAsync($"/api/campaigns/{campaign.Id}");
+        var response = await _client.GetAsync($"/api/campaigns/{created.Id}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         // GetById returns CampaignDetailResponse (with aggregate counts, not navigation lists)
         var detail = await response.Content.ReadFromJsonAsync<CampaignDetailResponse>();
         Assert.NotNull(detail);
-        Assert.Equal(campaign.Id, detail.Id);
+        Assert.Equal(created.Id, detail.Id);
         Assert.Equal("Curse of Strahd", detail.Name);
         Assert.Equal(0, detail.NpcCount);
         Assert.Equal(0, detail.SessionCount);
@@ -185,19 +183,13 @@ public class CampaignsControllerTests : IAsyncLifetime
     [Fact]
     public async Task Delete_ExistingCampaign_Returns204AndRemovesIt()
     {
-        var campaign = new Campaign { Name = "Tomb of Annihilation", UserId = TestAuthHandler.TestUserId };
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Campaigns.Add(campaign);
-            await db.SaveChangesAsync();
-        }
+        var created = await CreateCampaignAsync("Tomb of Annihilation");
 
-        var deleteResponse = await _client.DeleteAsync($"/api/campaigns/{campaign.Id}");
+        var deleteResponse = await _client.DeleteAsync($"/api/campaigns/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
         // Verify it is gone
-        var getResponse = await _client.GetAsync($"/api/campaigns/{campaign.Id}");
+        var getResponse = await _client.GetAsync($"/api/campaigns/{created.Id}");
         Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
     }
 
@@ -214,13 +206,7 @@ public class CampaignsControllerTests : IAsyncLifetime
     [Fact]
     public async Task Update_ExistingCampaign_Returns200WithUpdatedValues()
     {
-        var campaign = new Campaign { Name = "Old Name", Description = "Old desc", Setting = "Old Setting", UserId = TestAuthHandler.TestUserId };
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Campaigns.Add(campaign);
-            await db.SaveChangesAsync();
-        }
+        var created = await CreateCampaignAsync("Old Name", "Old desc", "Old Setting");
 
         var updatePayload = new
         {
@@ -230,7 +216,7 @@ public class CampaignsControllerTests : IAsyncLifetime
             notes       = (string?)null
         };
 
-        var response = await _client.PutAsJsonAsync($"/api/campaigns/{campaign.Id}", updatePayload);
+        var response = await _client.PutAsJsonAsync($"/api/campaigns/{created.Id}", updatePayload);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var updated = await response.Content.ReadFromJsonAsync<Campaign>();
